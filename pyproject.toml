@@ -1,0 +1,14 @@
+[project]
+name = "comfyui-npu-monitor"
+description = "Draggable floating status bar for Huawei Ascend NPU in ComfyUI: HBM/device memory, system RAM, AI Core utilization, temperature, power."
+version = "1.0.0"
+license = { text = "MIT" }
+dependencies = ["psutil"]
+
+[project.urls]
+Repository = "https://github.com/BenjaminHernandez9794/ComfyuUI_npu_monitor"
+
+[tool.comfy]
+PublisherId = "benjaminhernandez9794"
+DisplayName = "ComfyUI NPU Monitor"
+Icon = ""
