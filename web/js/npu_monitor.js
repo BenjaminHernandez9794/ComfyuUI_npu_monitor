@@ -67,7 +67,7 @@ function tempColor(t) {
 const gb = (mb) => (mb / 1024).toFixed(1);
 
 function item(label, value, pct, c) {
-  const meter = pct == null ? "" :
+  const meter = pct == null ? `<div class="nm-meter" style="background:transparent"></div>` :
     `<div class="nm-meter"><i style="width:${Math.min(100, Math.max(0, pct))}%;background:${c || color(pct)}"></i></div>`;
   return `<div class="nm-item"><span class="nm-lbl">${label}</span><span class="nm-val">${value}</span>${meter}</div>`;
 }
@@ -204,6 +204,7 @@ class NPUBar {
     if (d.error && !(d.devices || []).length) parts.unshift(`<span class="nm-err">${d.error}</span>`);
     if (!parts.length) parts.push(`<span class="nm-lbl">等待数据…</span>`);
     this.body.innerHTML = parts.join("");
+    this.clamp(); // content size changed: keep the whole bar inside the window
   }
 }
 
