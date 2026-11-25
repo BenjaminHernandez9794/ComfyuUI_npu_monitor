@@ -172,14 +172,52 @@ def _torch_npu_devices() -> List[Dict[str, Any]]:
 # --------------------------------------------------------------------------- #
 # system stats
 # --------------------------------------------------------------------------- #
+def _read_int(path: str) -> Optional[int]:
+    try:
+        with open(path) as f:
+            v = f.read().strip()
+        return None if v in ("max", "") else int(v)
+    except Exception:
+        return None
+
+
+def _cgroup_memory() -> Optional[tuple]:
+    """(used_bytes, limit_bytes) when running inside a memory-limited container."""
+    # cgroup v2
+    limit = _read_int("/sys/fs/cgroup/memory.max")
+    if limit:
+        used = _read_int("/sys/fs/cgroup/memory.current")
+        inactive = 0
+        try:
+            with open("/sys/fs/cgroup/memory.stat") as f:
+                for line in f:
+                    if line.startswith("inactive_file "):
+                        inactive = int(line.split()[1])
+        except Exception:
+            pass
+        if used is not None:
+            return max(0, used - inactive), limit
+    # cgroup v1
+    limit = _read_int("/sys/fs/cgroup/memory/memory.limit_in_bytes")
+    if limit and limit < (1 << 60):
+        used = _read_int("/sys/fs/cgroup/memory/memory.usage_in_bytes")
+        if used is not None:
+            return used, limit
+    return None
+
+
 def _system_stats() -> Dict[str, Any]:
     if psutil is None:
         return {}
     vm = psutil.virtual_memory()
+    used, total = vm.total - vm.available, vm.total
+    cg = _cgroup_memory()
+    if cg and 0 < cg[1] < vm.total:  # container limit is smaller than host RAM
+        used, total = cg
     return {
-        "ram_used_mb": (vm.total - vm.available) / 1024 / 1024,
-        "ram_total_mb": vm.total / 1024 / 1024,
-        "ram_pct": vm.percent,
+        "ram_used_mb": used / 1024 / 1024,
+        "ram_total_mb": total / 1024 / 1024,
+        "ram_pct": round(100.0 * used / total, 1) if total else None,
         "cpu_pct": psutil.cpu_percent(interval=None),
     }
 
