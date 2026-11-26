@@ -50,3 +50,17 @@ Docker 里运行时需要把 `npu-smi` 及驱动目录挂载进容器（`/usr/lo
 ```bash
 python tests/test_parser.py
 ```
+
+## 运行日志（内存 / 显存 / 每个节点耗时）
+
+每次执行工作流都会自动记录一份日志，无需额外节点：
+
+- 点状态栏上的 **☰** 按钮打开「运行日志」面板：总耗时、设备显存峰值、torch 显存峰值、进程内存峰值、AI Core 平均利用率，以及**耗时最长的 10 个节点**（每个节点的耗时、显存峰值、AI Core、内存）。
+- 面板里可下载两份 CSV：
+  - `节点明细`：每个实际执行的节点一行（开始时间、耗时、torch_npu 峰值已分配/已保留显存、设备显存峰值、AI Core 平均/峰值、进程内存峰值与增量）。
+  - `时间线`：执行期间每 0.5 秒一行（当前节点、设备显存、AI Core、温度、功耗、torch 已分配/已保留、ComfyUI 进程 RSS、系统/容器内存、CPU）。
+- 文件同时保存在服务器 `ComfyUI/output/npu_monitor_logs/`，默认保留最近 50 次。
+
+环境变量：`NPU_MONITOR_LOG=0` 关闭记录；`NPU_MONITOR_LOG_INTERVAL` 采样间隔（秒，默认 0.5）；`NPU_MONITOR_MAX_RUNS` 保留次数。
+
+说明：「设备显存」来自 npu-smi（整卡占用，含其他进程）；「torch 峰值」来自 `torch.npu.max_memory_reserved`，是本进程在该节点内的真实峰值，比 1 秒一次的采样更准。

@@ -50,6 +50,20 @@ const CSS = `
 #npu-monitor-bar .nm-btn:hover{color:#fff}
 #npu-monitor-bar.collapsed .nm-body{display:none}
 #npu-monitor-bar .nm-err{color:#f88}
+#npu-monitor-log{position:fixed;z-index:10001;background:rgba(24,24,24,.97);color:#ddd;border:1px solid #444;border-radius:8px;
+  font:12px/1.45 ui-monospace,Menlo,Consolas,monospace;padding:8px 10px;box-shadow:0 6px 20px rgba(0,0,0,.5);
+  width:min(760px,94vw);max-height:70vh;overflow:auto}
+#npu-monitor-log .hd{display:flex;gap:8px;align-items:center;margin-bottom:6px}
+#npu-monitor-log select{flex:1;background:#222;color:#ddd;border:1px solid #444;border-radius:4px;padding:2px}
+#npu-monitor-log a{color:#9cf}
+#npu-monitor-log .x{cursor:pointer;color:#888;padding:0 4px}
+#npu-monitor-log .sum{display:flex;flex-wrap:wrap;gap:4px 16px;margin:4px 0 8px}
+#npu-monitor-log .sum b{color:#fff;font-weight:600}
+#npu-monitor-log table{border-collapse:collapse;width:100%}
+#npu-monitor-log th,#npu-monitor-log td{padding:2px 6px;border-bottom:1px solid #333;text-align:right;white-space:nowrap}
+#npu-monitor-log th:nth-child(-n+2),#npu-monitor-log td:nth-child(-n+2){text-align:left}
+#npu-monitor-log th{color:#999;font-weight:400}
+#npu-monitor-log .bar{display:inline-block;height:6px;background:#3d8bd6;border-radius:2px;vertical-align:middle;margin-right:4px}
 `;
 
 function color(pct) {
@@ -72,6 +86,91 @@ function item(label, value, pct, c) {
   return `<div class="nm-item"><span class="nm-lbl">${label}</span><span class="nm-val">${value}</span>${meter}</div>`;
 }
 
+// ------------------------------------------------------------------ run log panel
+const gb = (mb) => (mb == null ? "-" : (mb / 1024).toFixed(2) + " GB");
+const esc = (t) => String(t ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+
+const LOG_PANEL = {
+  el: null,
+  async toggle(anchor) {
+    if (this.el) return this.close();
+    this.el = document.createElement("div");
+    this.el.id = "npu-monitor-log";
+    this.el.addEventListener("pointerdown", (e) => e.stopPropagation());
+    document.body.appendChild(this.el);
+    const r = anchor.getBoundingClientRect();
+    const w = this.el.offsetWidth;
+    this.el.style.left = Math.max(8, Math.min(r.right - w, innerWidth - w - 8)) + "px";
+    if (r.top > innerHeight / 2) this.el.style.bottom = innerHeight - r.top + 6 + "px";
+    else this.el.style.top = r.bottom + 6 + "px";
+    this.el.innerHTML = "加载中…";
+    await this.loadList();
+  },
+  close() {
+    this.el?.remove();
+    this.el = null;
+  },
+  async loadList() {
+    let j;
+    try {
+      j = await (await api.fetchApi("/npu_monitor/runs?limit=30")).json();
+    } catch (e) {
+      this.el.innerHTML = `<span style="color:#f88">读取日志失败：${esc(e)}</span>`;
+      return;
+    }
+    const runs = j.runs || [];
+    const opts = runs
+      .map((r) => `<option value="${esc(r.id)}">${esc(r.start)} · ${r.duration_s}s · ${esc(r.status)} · 显存峰值 ${gb(r.peak_device_mb)}</option>`)
+      .join("");
+    this.el.innerHTML = `
+      <div class="hd"><b>运行日志</b>
+        <select>${opts || "<option>还没有记录，运行一次工作流后再打开</option>"}</select>
+        <span class="x" data-a="refresh" title="刷新">⟳</span><span class="x" data-a="close" title="关闭">✕</span></div>
+      ${j.recording ? '<div style="color:#f5a524">● 正在记录当前运行…</div>' : ""}
+      <div class="detail"></div>`;
+    this.el.querySelector('[data-a="close"]').onclick = () => this.close();
+    this.el.querySelector('[data-a="refresh"]').onclick = () => this.loadList();
+    const sel = this.el.querySelector("select");
+    sel.onchange = () => this.loadRun(sel.value);
+    if (runs.length) this.loadRun(runs[0].id);
+  },
+  async loadRun(id) {
+    const box = this.el?.querySelector(".detail");
+    if (!box) return;
+    let s;
+    try {
+      s = await (await api.fetchApi(`/npu_monitor/runs/${encodeURIComponent(id)}`)).json();
+    } catch (e) {
+      box.textContent = "读取失败";
+      return;
+    }
+    const url = (k) => api.apiURL(`/npu_monitor/runs/${encodeURIComponent(id)}/${k}.csv`);
+    const top = s.top_nodes || [];
+    const maxDur = Math.max(...top.map((n) => n.duration_s || 0), 0.001);
+    const rows = top
+      .map(
+        (n) => `<tr><td>${esc(n.node_id)}</td><td title="${esc(n.class_type)}">${esc(n.title || n.class_type)}</td>
+        <td><span class="bar" style="width:${Math.round((60 * (n.duration_s || 0)) / maxDur)}px"></span>${(n.duration_s ?? 0).toFixed(2)}s</td>
+        <td>${gb(n.device_peak_mb)}</td><td>${gb(n.torch_peak_reserved_mb)}</td>
+        <td>${n.aicore_avg_pct ?? "-"}%</td><td>${gb(n.rss_peak_mb)}</td></tr>`
+      )
+      .join("");
+    box.innerHTML = `
+      <div class="sum">
+        <span>总耗时 <b>${s.duration_s}s</b></span>
+        <span>执行节点 <b>${s.executed_nodes}</b>（缓存跳过 ${s.cached_nodes}）</span>
+        <span>设备显存峰值 <b>${gb(s.peak_device_mb)}</b> / ${gb(s.device_total_mb)}</span>
+        <span>torch 保留峰值 <b>${gb(s.peak_torch_reserved_mb)}</b></span>
+        <span>ComfyUI 进程内存峰值 <b>${gb(s.peak_rss_mb)}</b></span>
+        <span>AI Core 平均 <b>${s.aicore_avg_pct ?? "-"}%</b></span>
+        ${s.error ? `<span style="color:#f88">错误：${esc(s.error)}</span>` : ""}
+      </div>
+      <table><tr><th>节点</th><th>名称</th><th>耗时</th><th>设备显存峰值</th><th>torch 峰值</th><th>AI Core</th><th>进程内存</th></tr>${rows}</table>
+      <div style="margin-top:6px">下载：<a href="${url("nodes")}" download>节点明细 CSV</a> · <a href="${url("timeline")}" download>时间线 CSV</a>
+      <span style="color:#888">（服务器上也保存在 output/npu_monitor_logs/）</span></div>`;
+  },
+};
+
 // ------------------------------------------------------------------ bar
 class NPUBar {
   constructor() {
@@ -81,6 +180,7 @@ class NPUBar {
     this.el.innerHTML = `
       <div class="nm-grip" title="拖动移动 / 双击复位">⠿</div>
       <div class="nm-body"><span class="nm-lbl">NPU Monitor 加载中…</span></div>
+      <div class="nm-btn nm-log" title="运行日志（每次执行的内存/显存/耗时）">☰</div>
       <div class="nm-btn nm-collapse" title="折叠/展开">–</div>`;
     this.body = this.el.querySelector(".nm-body");
     document.body.appendChild(this.el);
@@ -91,6 +191,10 @@ class NPUBar {
       const c = this.el.classList.toggle("collapsed");
       localStorage.setItem(COLLAPSE_KEY, c ? "1" : "0");
       this.clamp();
+    });
+    this.el.querySelector(".nm-log").addEventListener("click", (e) => {
+      e.stopPropagation();
+      LOG_PANEL.toggle(this.el);
     });
     this.el.querySelector(".nm-grip").addEventListener("dblclick", () => {
       localStorage.removeItem(POS_KEY);
