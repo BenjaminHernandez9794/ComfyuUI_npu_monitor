@@ -87,7 +87,7 @@ function item(label, value, pct, c) {
 }
 
 // ------------------------------------------------------------------ run log panel
-const gb = (mb) => (mb == null ? "-" : (mb / 1024).toFixed(2) + " GB");
+const logGB = (mb) => (mb == null ? "-" : (mb / 1024).toFixed(2) + " GB");
 const esc = (t) => String(t ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
 const LOG_PANEL = {
@@ -120,7 +120,7 @@ const LOG_PANEL = {
     }
     const runs = j.runs || [];
     const opts = runs
-      .map((r) => `<option value="${esc(r.id)}">${esc(r.start)} · ${r.duration_s}s · ${esc(r.status)} · 显存峰值 ${gb(r.peak_device_mb)}</option>`)
+      .map((r) => `<option value="${esc(r.id)}">${esc(r.start)} · ${r.duration_s}s · ${esc(r.status)} · 显存峰值 ${logGB(r.peak_device_mb)}</option>`)
       .join("");
     this.el.innerHTML = `
       <div class="hd"><b>运行日志</b>
@@ -151,17 +151,17 @@ const LOG_PANEL = {
       .map(
         (n) => `<tr><td>${esc(n.node_id)}</td><td title="${esc(n.class_type)}">${esc(n.title || n.class_type)}</td>
         <td><span class="bar" style="width:${Math.round((60 * (n.duration_s || 0)) / maxDur)}px"></span>${(n.duration_s ?? 0).toFixed(2)}s</td>
-        <td>${gb(n.device_peak_mb)}</td><td>${gb(n.torch_peak_reserved_mb)}</td>
-        <td>${n.aicore_avg_pct ?? "-"}%</td><td>${gb(n.rss_peak_mb)}</td></tr>`
+        <td>${logGB(n.device_peak_mb)}</td><td>${logGB(n.torch_peak_reserved_mb)}</td>
+        <td>${n.aicore_avg_pct ?? "-"}%</td><td>${logGB(n.rss_peak_mb)}</td></tr>`
       )
       .join("");
     box.innerHTML = `
       <div class="sum">
         <span>总耗时 <b>${s.duration_s}s</b></span>
         <span>执行节点 <b>${s.executed_nodes}</b>（缓存跳过 ${s.cached_nodes}）</span>
-        <span>设备显存峰值 <b>${gb(s.peak_device_mb)}</b> / ${gb(s.device_total_mb)}</span>
-        <span>torch 保留峰值 <b>${gb(s.peak_torch_reserved_mb)}</b></span>
-        <span>ComfyUI 进程内存峰值 <b>${gb(s.peak_rss_mb)}</b></span>
+        <span>设备显存峰值 <b>${logGB(s.peak_device_mb)}</b> / ${logGB(s.device_total_mb)}</span>
+        <span>torch 保留峰值 <b>${logGB(s.peak_torch_reserved_mb)}</b></span>
+        <span>ComfyUI 进程内存峰值 <b>${logGB(s.peak_rss_mb)}</b></span>
         <span>AI Core 平均 <b>${s.aicore_avg_pct ?? "-"}%</b></span>
         ${s.error ? `<span style="color:#f88">错误：${esc(s.error)}</span>` : ""}
       </div>
